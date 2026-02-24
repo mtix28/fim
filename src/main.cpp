@@ -1,15 +1,24 @@
 #include <iostream>
 #include <filesystem>
+#include <string>
+
+struct Files {
+    std::string path;
+    uintmax_t file_size;
+    std::string hash = "";
+};
 
 // durchlaufen der datein des pfades und prüfen ob rechte vorhanden sind
-void scanDir(const std::filesystem::path &target_pfad) {
+std::vector<Files> scanDir(const std::filesystem::path &target_pfad) {
+    std::vector<Files> scanned_files;
     auto options = std::filesystem::directory_options::skip_permission_denied;
 
     try {
         for(const auto &dir_entry : std::filesystem::recursive_directory_iterator(target_pfad, options)) {
             try {
                 if(std::filesystem::is_regular_file(dir_entry)) {
-                    std::cout << dir_entry.path().string() << "\n";
+                    Files file = {dir_entry.path().string(), std::filesystem::file_size(dir_entry)};
+                    scanned_files.push_back(file);
                 }
             } catch(const std::filesystem::filesystem_error &e) {
                 std::cerr << "[-] Zugriff verweigert: " << e.what() << "\n";
@@ -18,6 +27,7 @@ void scanDir(const std::filesystem::path &target_pfad) {
     } catch(const std::filesystem::filesystem_error &e) {
         std::cerr << "[-] Fehler beim scannen des Ordners: " << e.what() << "\n";
     }
+    return scanned_files;
 }
 
 int main(int argc, char *argv[]) {
@@ -37,7 +47,10 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    scanDir(pfad);
+    std::vector<Files> finished_files = scanDir(pfad);
+    for(const auto &file : finished_files) {
+        std::cout << file.path << ": " << file.file_size << "\n";
+    }
 
     return 0;
 }
