@@ -1,14 +1,43 @@
 #include <iostream>
 #include <filesystem>
 #include <string>
+#include "../include/picosha2.h";
 
 struct Files {
     std::string path;
     uintmax_t file_size;
-    std::string hash = "";
+    std::string hash;
 };
 
-// durchlaufen der datein des pfades und prüfen ob rechte vorhanden sind
+//hash mit pico library generieren
+std::string calcHash(const std::string &filepath) {
+    //Datei öffnen
+    std::ifstream file(filepath, std::ios::binary);
+    if(!file.is_open()) {
+        return "";
+    }
+
+    picosha2::hash256_one_by_one hasher;
+    const int bufferSize = 4096;
+    std::vector<char> buffer(bufferSize);
+
+    while(file.read(buffer.data(), buffer.size())) {
+        hasher.process(buffer.begin(), buffer.end());
+    }
+
+    if(file.gcount() > 0) {
+        hasher.process(buffer.begin(), buffer.begin() + file.gcount());
+    }
+
+    hasher.finish();
+
+    std::string hash_string;
+    picosha2::get_hash_hex_string(hasher, hash_string);
+
+    return hash_string;
+}
+
+// durchlaufen der datein des pfades und prüfen ob rechte vorhanden sind, zum Files struct hinzufügen
 std::vector<Files> scanDir(const std::filesystem::path &target_pfad) {
     std::vector<Files> scanned_files;
     auto options = std::filesystem::directory_options::skip_permission_denied;
@@ -17,7 +46,7 @@ std::vector<Files> scanDir(const std::filesystem::path &target_pfad) {
         for(const auto &dir_entry : std::filesystem::recursive_directory_iterator(target_pfad, options)) {
             try {
                 if(std::filesystem::is_regular_file(dir_entry)) {
-                    Files file = {dir_entry.path().string(), std::filesystem::file_size(dir_entry)};
+                    Files file = {dir_entry.path().string(), std::filesystem::file_size(dir_entry), calcHash(dir_entry.path().string())};
                     scanned_files.push_back(file);
                 }
             } catch(const std::filesystem::filesystem_error &e) {
@@ -49,7 +78,7 @@ int main(int argc, char *argv[]) {
 
     std::vector<Files> finished_files = scanDir(pfad);
     for(const auto &file : finished_files) {
-        std::cout << file.path << ": " << file.file_size << "\n";
+        std::cout << file.path << ": " << file.file_size << ": " << file.hash << "\n";
     }
 
     return 0;
