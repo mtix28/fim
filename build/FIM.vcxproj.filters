@@ -4,9 +4,6 @@
     <ClCompile Include="D:\repos\fim\src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="D:\repos\fim\src\test.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <CustomBuild Include="D:\repos\fim\CMakeLists.txt" />

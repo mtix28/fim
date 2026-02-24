@@ -6,7 +6,6 @@ cmake_policy(SET CMP0009 NEW)
 file(GLOB_RECURSE NEW_GLOB LIST_DIRECTORIES false "D:/repos/fim/src/*.cpp")
 set(OLD_GLOB
   "D:/repos/fim/src/main.cpp"
-  "D:/repos/fim/src/test.cpp"
   )
 if(NOT "${NEW_GLOB}" STREQUAL "${OLD_GLOB}")
   message("-- GLOB mismatch!")

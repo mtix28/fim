@@ -333,7 +333,6 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="D:\repos\fim\src\main.cpp" />
-    <ClCompile Include="D:\repos\fim\src\test.cpp" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>
