@@ -70,15 +70,32 @@ int main(int argc, char *argv[]) {
 
     //Überprüfen ob der Pfad existiert und ein Ordner ist
     if(std::filesystem::exists(pfad) && std::filesystem::is_directory(pfad)) {
-        std::cout << "[+] Der Pfad " << pfad << " wurde ausgewaehlt und wird ueberwacht\n";
+        std::cout << "[+] Der Pfad " << pfad << " wurde ausgewaehlt und wird gescannt\n\n";
     } else {
         std::cout << "[-] Pfad ungueltig oder kein Ordner\n";
         return 1;
     }
 
+    std::cout << "[*] Starte scan fuer: " << pfad << "\n";
+
+    //pfad scannen
     std::vector<Files> finished_files = scanDir(pfad);
-    for(const auto &file : finished_files) {
-        std::cout << file.path << ": " << file.file_size << ": " << file.hash << "\n";
+
+    std::cout << "[+] Scan abgeschlossen. Gefundene Dateien: " << finished_files.size() << "\n\n";
+    std::cout << std::string(130, '-') << "\n";
+
+    //schöne darstellung mit tabelle und std::iomanip
+    std::cout << std::left 
+              << std::setw(68) << "SHA-256 Hash" 
+              << std::setw(20) << "Groesse (Bytes)" 
+              << "Dateipfad\n";
+    std::cout << std::string(130, '-') << "\n";
+
+    for(const auto& file : finished_files) {
+        std::cout << std::left 
+                  << std::setw(68) << file.hash 
+                  << std::setw(20) << file.file_size
+                  << file.path<< "\n";
     }
 
     return 0;
