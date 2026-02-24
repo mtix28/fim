@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
 
     //Überprüfen ob der Pfad existiert und ein Ordner ist
     if(std::filesystem::exists(pfad) && std::filesystem::is_directory(pfad)) {
-        std::cout << "[+] Der Pfad " << pfad << " wurde ausgewaehlt\n";
+        std::cout << "[+] Der Pfad " << pfad << " wurde ausgewaehlt und wird ueberwacht\n";
     } else {
         std::cout << "[-] Pfad ungueltig oder kein Ordner\n";
         return 1;
