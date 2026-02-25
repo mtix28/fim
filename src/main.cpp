@@ -1,8 +1,8 @@
 #include <iostream>
 #include <filesystem>
 #include <string>
-#include "../include/picosha2.h";
-#include "../include/json.hpp";
+#include "../include/picosha2.h"
+#include "../include/json.hpp"
 #include <fstream>
 
 struct Files {
@@ -10,6 +10,34 @@ struct Files {
     uintmax_t file_size;
     std::string hash;
 };
+
+std::vector<Files> loadFile(const std::string &inPath) {
+    std::vector<Files> loadedFile;
+
+    std::ifstream file(inPath);
+    if(!file.is_open()) {
+        std::cerr << "[-] Base File konnte nicht gefunden werden\n";
+        return loadedFile;
+    }
+
+    try {
+
+        nlohmann::json json_data = nlohmann::json::parse(file);
+
+        for(const auto &entry : json_data) {
+            std::string path = entry["path"];
+            uintmax_t size = entry["file_size"];
+            std::string hash = entry["hash"];
+            Files temp = {path, size, hash};
+            loadedFile.push_back(temp);
+        }
+    } catch(const nlohmann::json::exception &e) {
+        std::cerr << "[-] Fehler beim lesen der base file: " << e.what() << "\n";
+    }
+
+    file.close();
+    return loadedFile;
+}
 
 //gescannte datei in json file abspeichern
 bool saveFile(const std::vector<Files> &scanned_files, const std::string &outPath) {
@@ -29,6 +57,7 @@ bool saveFile(const std::vector<Files> &scanned_files, const std::string &outPat
         return false;
     }
     file << std::setw(4) << file_arry;
+    file.close();
 
     return true;
 }
@@ -87,6 +116,7 @@ int main(int argc, char *argv[]) {
     //weniger als 2 argumente
     if(argc < 2 || argc > 2) {
         std::cout << "[Usage] /fim <Pfad>\n";
+        return 1;
     }
 
     //Eingabe in std::filesystem::path umwandeln
@@ -99,6 +129,10 @@ int main(int argc, char *argv[]) {
         std::cout << "[-] Pfad ungueltig oder kein Ordner\n";
         return 1;
     }
+
+    //load alte base file
+    std::vector<Files> old_base = loadFile("base.json");
+    std::cout << "[DEBUG] Alte Eintraege: " << old_base.size() << "\n\n";
 
     std::cout << "[*] Starte scan fuer: " << pfad << "\n";
 
