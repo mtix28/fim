@@ -2,12 +2,36 @@
 #include <filesystem>
 #include <string>
 #include "../include/picosha2.h";
+#include "../include/json.hpp";
+#include <fstream>
 
 struct Files {
     std::string path;
     uintmax_t file_size;
     std::string hash;
 };
+
+//gescannte datei in json file abspeichern
+bool saveFile(const std::vector<Files> &scanned_files, const std::string &outPath) {
+    nlohmann::json file_arry = nlohmann::json::array();
+
+    for(const auto &entry : scanned_files) {
+        nlohmann::json temp_array = nlohmann::json::object();
+        temp_array["path"] = entry.path;
+        temp_array["file_size"] = entry.file_size;
+        temp_array["hash"] = entry.hash;
+        file_arry.push_back(temp_array);
+    }
+
+    std::ofstream file(outPath);
+    if(!file.is_open()) {
+        std::cerr << "[-] Datei: " << outPath << " konnte zum schreiben nicht genutzt werden";
+        return false;
+    }
+    file << std::setw(4) << file_arry;
+
+    return true;
+}
 
 //hash mit pico library generieren
 std::string calcHash(const std::string &filepath) {
@@ -97,6 +121,8 @@ int main(int argc, char *argv[]) {
                   << std::setw(20) << file.file_size
                   << file.path<< "\n";
     }
+
+    saveFile(finished_files, "base.json");
 
     return 0;
 }
