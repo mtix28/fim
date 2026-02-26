@@ -4,6 +4,10 @@
 #include "../include/picosha2.h"
 #include "../include/json.hpp"
 #include <fstream>
+#include <ftxui/component/component.hpp>           // Für interaktive Elemente (Buttons, Inputs)
+#include <ftxui/component/screen_interactive.hpp>  // Für die Event-Loop
+#include <ftxui/dom/elements.hpp>                  // Für das reine Zeichnen (Rahmen, Farben, Text)>
+#include <thread>
 
 struct Files {
     std::string path;
@@ -157,58 +161,139 @@ std::vector<Files> scanDir(const std::filesystem::path &target_pfad) {
 }
 
 int main(int argc, char *argv[]) {
-    //weniger als 2 argumente
-    if(argc < 2 || argc > 2) {
-        std::cout << "[Usage] /fim <Pfad>\n";
-        return 1;
-    }
+    // Namensraum für bessere Lesbarkeit
+    using namespace ftxui;
 
-    //Eingabe in std::filesystem::path umwandeln
-    const std::filesystem::path pfad = argv[1];
+    // 1. Die Event-Loop definieren
+    auto screen = ScreenInteractive::TerminalOutput();
 
-    //Überprüfen ob der Pfad existiert und ein Ordner ist
-    if(std::filesystem::exists(pfad) && std::filesystem::is_directory(pfad)) {
-        std::cout << "[+] Der Pfad " << pfad << " wurde ausgewaehlt und wird gescannt\n\n";
-    } else {
-        std::cout << "[-] Pfad ungueltig oder kein Ordner\n";
-        return 1;
-    }
+    // 2. Der "State" (Zustand) unserer Anwendung
+    std::string target_path = (argc == 2) ? argv[1] : "C:\\"; 
+    std::string status_text = "Bereit fuer den Scan.";
+    bool is_scanning = false;
+    
+    // Speichert den kompletten Report, damit die UI die Listen zeichnen kann
+    ScanReport current_report;
 
-    //load alte base file
-    std::vector<Files> old_base = loadFile("base.json");
+    // 3. Interaktive Komponenten (Controller)
+    Component input_path = Input(&target_path, "Ordnerpfad hier eingeben...");
+    
+    Component btn_scan = Button("Scan starten", [&] {
+        // Verhindern, dass der Scan mehrfach parallel gestartet wird
+        if (is_scanning) return; 
+        is_scanning = true;
 
-    std::cout << "[*] Starte scan fuer: " << pfad << "\n";
+        // Multithreading: Wir übergeben nur explizite Referenzen, um Memory-Leaks zu vermeiden
+        std::thread([&screen, &status_text, &current_report, &is_scanning, target_copy = target_path] {
+            
+            screen.Post([&status_text] { status_text = "Lade alte Baseline..."; });
+            auto old_base = loadFile("base.json");
 
-    //pfad scannen
-    std::vector<Files> finished_files = scanDir(pfad);
+            screen.Post([&status_text, target_copy] { status_text = "Scanne Ordner: " + target_copy + " ..."; });
+            auto finished_files = scanDir(target_copy);
 
-    //vergleichen
-    std::cout << "[*] Fuehre Abgleich mit der Baseline durch...\n";
-    ScanReport report = compareScans(old_base, finished_files);
+            screen.Post([&status_text] { status_text = "Vergleiche Hashes..."; });
+            auto report = compareScans(old_base, finished_files);
 
-    std::cout << "\n[ERGEBNISSE DES INTEGRITAETS-SCANS]\n";
-    std::cout << "Neue Dateien: " << report.new_files.size() << "\n";
-    std::cout << "Modifizierte Dateien: " << report.modified_files.size() << "\n";
-    std::cout << "Geloeschte Dateien: " << report.deleted_files.size() << "\n\n";
+            screen.Post([&status_text] { status_text = "Speichere neue Baseline..."; });
+            saveFile(finished_files, "base.json");
 
-    std::cout << "[+] Scan abgeschlossen. Gefundene Dateien: " << finished_files.size() << "\n\n";
-    std::cout << std::string(130, '-') << "\n";
+            // Die Ergebnisse sauber per Move-Semantik in den Main-Thread schieben
+            screen.Post([&current_report, &status_text, &is_scanning, report_copy = std::move(report)] {
+                current_report = report_copy;
+                status_text = "Scan erfolgreich beendet!";
+                is_scanning = false;
+            });
 
-    //schöne darstellung mit tabelle und std::iomanip
-    std::cout << std::left 
-              << std::setw(68) << "SHA-256 Hash" 
-              << std::setw(20) << "Groesse (Bytes)" 
-              << "Dateipfad\n";
-    std::cout << std::string(130, '-') << "\n";
+        }).detach(); 
+    });
+    
+    Component btn_quit = Button("Beenden", [&] { screen.Exit(); });
 
-    for(const auto& file : finished_files) {
-        std::cout << std::left 
-                  << std::setw(68) << file.hash 
-                  << std::setw(20) << file.file_size
-                  << file.path<< "\n";
-    }
+    // Der Container verwaltet die Eingaben (Tab-Navigation)
+    auto layout = Container::Vertical({
+        input_path,
+        Container::Horizontal({btn_scan, btn_quit})
+    });
 
-    saveFile(finished_files, "base.json");
+    // 4. Hilfsfunktion: Wandelt Vektoren in eine UI-Liste um (mit Überlastungsschutz!)
+    auto create_file_list = [](const std::vector<Files>& files, Color color, const std::string& title) {
+        Elements elements;
+        elements.push_back(text(title) | bold | ftxui::color(color));
+        elements.push_back(separator());
+        
+        if (files.empty()) {
+            elements.push_back(text(" Keine Dateien gefunden.") | dim);
+        } else {
+            int limit = 50; // Max. 50 Elemente rendern, um Speicherüberlauf zu verhindern
+            int count = 0;
+            
+            for (const auto& f : files) {
+                elements.push_back(text(" - " + f.path) | ftxui::color(color));
+                count++;
+                
+                // Sobald das Limit erreicht ist, brechen wir die GUI-Generierung ab
+                if (count >= limit) {
+                    elements.push_back(text(" ... und " + std::to_string(files.size() - limit) + " weitere Dateien.") | dim | italic | ftxui::color(color));
+                    break;
+                }
+            }
+        }
+        return vbox(std::move(elements));
+    };
+
+    // 5. Der Renderer (Die View / Das visuelle Layout)
+    auto renderer = Renderer(layout, [&] {
+        
+        // Die Detail-Listen generieren
+        auto detail_lists = vbox({
+            create_file_list(current_report.new_files, Color::Green, "NEUE DATEIEN"),
+            text(""), // Optischer Abstand
+            create_file_list(current_report.modified_files, Color::Yellow, "MODIFIZIERTE DATEIEN"),
+            text(""), 
+            create_file_list(current_report.deleted_files, Color::Red, "GELOESCHTE DATEIEN"),
+        });
+
+        // Das finale Fenster zusammenbauen
+        return vbox({
+            // Header
+            text(" [ FILE INTEGRITY MONITOR ] ") | bold | center | color(Color::Cyan),
+            separator(),
+            
+            // Eingabebereich
+            hbox({
+                text(" Zielpfad: ") | bold,
+                input_path->Render() | flex,
+            }) | border,
+            
+            // Dashboard für Ergebnisse (Zusammenfassung)
+            vbox({
+                text(" ZUSAMMENFASSUNG ") | bold | center,
+                separator(),
+                text(" Neue Dateien:         " + std::to_string(current_report.new_files.size())) | color(Color::Green),
+                text(" Modifizierte Dateien: " + std::to_string(current_report.modified_files.size())) | color(Color::Yellow),
+                text(" Geloeschte Dateien:   " + std::to_string(current_report.deleted_files.size())) | color(Color::Red),
+            }) | border,
+
+            // Scrollbarer Detail-Bereich
+            vbox({
+                text(" DETAILANSICHT ") | bold | center,
+                separator(),
+                detail_lists | vscroll_indicator | frame | flex, 
+            }) | border | flex, 
+            
+            // Footer mit Statusleiste und Buttons
+            hbox({
+                text(" Status: " + status_text) | flex, 
+                btn_scan->Render() | color(Color::Green),
+                text(" "), 
+                btn_quit->Render() | color(Color::Red),
+            }),
+        }) | border; 
+    });
+
+    // 6. Anwendung starten
+    screen.Loop(renderer);
 
     return 0;
 }
