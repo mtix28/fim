@@ -11,6 +11,12 @@ struct Files {
     std::string hash;
 };
 
+struct ScanReport {
+    std::vector<Files> new_files;
+    std::vector<Files> modified_files;
+    std::vector<Files> deleted_files;
+};
+
 std::vector<Files> loadFile(const std::string &inPath) {
     std::vector<Files> loadedFile;
 
@@ -56,10 +62,48 @@ bool saveFile(const std::vector<Files> &scanned_files, const std::string &outPat
         std::cerr << "[-] Datei: " << outPath << " konnte zum schreiben nicht genutzt werden";
         return false;
     }
-    file << std::setw(4) << file_arry;
+
+    try {
+        file << file_arry.dump(4, ' ', false, nlohmann::json::error_handler_t::replace);
+    } catch(const std::exception &e) {
+        std::cerr << "[-] Exception in saveFile abgefangen: " << e.what() << "\n";
+    }
+
     file.close();
 
     return true;
+}
+
+ScanReport compareScans(const std::vector<Files>& old_base, const std::vector<Files>& new_scan) {
+    ScanReport report;
+    
+    if (old_base.empty()) {
+        report.new_files = new_scan;
+        return report;
+    }
+
+    std::unordered_map<std::string, Files> old_map;
+    for (const auto& file : old_base) {
+        old_map[file.path] = file;
+    }
+
+    for (const auto& new_file : new_scan) {
+        auto it = old_map.find(new_file.path);
+        
+        if (it == old_map.end()) {
+            report.new_files.push_back(new_file);
+        } else {
+            if (it->second.hash != new_file.hash) {
+                report.modified_files.push_back(new_file);
+            }
+            old_map.erase(it);
+        }
+    }
+    for (const auto& pair : old_map) {
+        report.deleted_files.push_back(pair.second);
+    }
+
+    return report;
 }
 
 //hash mit pico library generieren
@@ -132,12 +176,20 @@ int main(int argc, char *argv[]) {
 
     //load alte base file
     std::vector<Files> old_base = loadFile("base.json");
-    std::cout << "[DEBUG] Alte Eintraege: " << old_base.size() << "\n\n";
 
     std::cout << "[*] Starte scan fuer: " << pfad << "\n";
 
     //pfad scannen
     std::vector<Files> finished_files = scanDir(pfad);
+
+    //vergleichen
+    std::cout << "[*] Fuehre Abgleich mit der Baseline durch...\n";
+    ScanReport report = compareScans(old_base, finished_files);
+
+    std::cout << "\n[ERGEBNISSE DES INTEGRITAETS-SCANS]\n";
+    std::cout << "Neue Dateien: " << report.new_files.size() << "\n";
+    std::cout << "Modifizierte Dateien: " << report.modified_files.size() << "\n";
+    std::cout << "Geloeschte Dateien: " << report.deleted_files.size() << "\n\n";
 
     std::cout << "[+] Scan abgeschlossen. Gefundene Dateien: " << finished_files.size() << "\n\n";
     std::cout << std::string(130, '-') << "\n";
